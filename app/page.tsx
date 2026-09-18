@@ -1,103 +1,240 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import CaptureScreen from "@/components/CaptureScreen";
+import ReviewScreen from "@/components/ReviewScreen";
+import PreviewScreen from "@/components/PreviewScreen";
+import { dataUrlToBase64 } from "@/lib/image";
+import {
+  clearPassword,
+  loadPassword,
+  loadSettings,
+  nextQuoteNumber,
+  savePassword,
+} from "@/lib/storage";
+import { DEFAULT_SETTINGS, Quote, QuoteMeta, Settings } from "@/lib/types";
+
+type Screen = "capture" | "review" | "preview";
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [screen, setScreen] = useState<Screen>("capture");
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [description, setDescription] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [jobType, setJobType] = useState("");
+
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [meta, setMeta] = useState<QuoteMeta | null>(null);
+
+  const [building, setBuilding] = useState(false);
+  const [progressMessage, setProgressMessage] = useState("");
+  const [error, setError] = useState("");
+  const [askPassword, setAskPassword] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    setSettings(loadSettings());
+  }, []);
+
+  function handleBuild() {
+    setError("");
+    if (!loadPassword()) {
+      setAskPassword(true);
+      return;
+    }
+    void buildQuote();
+  }
+
+  function submitPassword() {
+    const value = passwordInput.trim();
+    if (!value) return;
+    savePassword(value);
+    setAskPassword(false);
+    setPasswordInput("");
+    void buildQuote();
+  }
+
+  async function buildQuote() {
+    setBuilding(true);
+    setProgressMessage("Reading your photos and notes…");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const slowTimer = setTimeout(
+      () => setProgressMessage("Drafting your quote… usually 10–30 seconds."),
+      4000
+    );
+
+    try {
+      const currentSettings = loadSettings();
+      const response = await fetch("/api/quote", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-app-password": loadPassword(),
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          description,
+          jobType,
+          customerName,
+          images: photos.map(dataUrlToBase64),
+          settings: {
+            businessName: currentSettings.businessName,
+            trade: currentSettings.trade,
+            defaultLabourRate: currentSettings.defaultLabourRate,
+            hstRegistered: currentSettings.hstRegistered,
+          },
+        }),
+      });
+
+      if (response.status === 401) {
+        clearPassword();
+        setError("Wrong password. Tap Build quote to enter it again.");
+        return;
+      }
+      if (response.status === 413) {
+        setError("The photos are too large. Remove a photo and try again.");
+        return;
+      }
+
+      let data: { quote?: Quote; error?: string } = {};
+      try {
+        data = await response.json();
+      } catch {
+        // non-JSON error body; handled below
+      }
+
+      if (response.status === 429) {
+        setError(data.error ?? "The AI is busy. Wait a minute and try again.");
+        return;
+      }
+      if (response.status === 422) {
+        setError(
+          "The AI returned something unexpected. Tap Build quote to try again."
+        );
+        return;
+      }
+      if (!response.ok || !data.quote) {
+        setError(data.error ?? "Something went wrong. Try again.");
+        return;
+      }
+
+      const now = new Date();
+      const validUntil = new Date(now);
+      validUntil.setDate(
+        validUntil.getDate() + (currentSettings.validityDays || 30)
+      );
+      setQuote(data.quote);
+      setMeta({
+        quoteNumber: nextQuoteNumber(),
+        date: now.toISOString(),
+        validUntil: validUntil.toISOString(),
+        customerName,
+        customerAddress,
+        jobType,
+      });
+      setScreen("review");
+    } catch (err) {
+      if ((err as Error).name === "AbortError") {
+        setError("");
+      } else {
+        setError("Network problem. Check your connection and try again.");
+      }
+    } finally {
+      clearTimeout(slowTimer);
+      setBuilding(false);
+      abortRef.current = null;
+    }
+  }
+
+  function cancelBuild() {
+    abortRef.current?.abort();
+  }
+
+  return (
+    <div className="min-h-screen">
+      <header className="no-print sticky top-0 z-10 flex items-center justify-between bg-white px-4 py-3 shadow-sm">
+        <h1 className="text-xl font-bold">SnapBid</h1>
+      </header>
+
+      {screen === "capture" && (
+        <CaptureScreen
+          photos={photos}
+          onPhotosChange={setPhotos}
+          description={description}
+          onDescriptionChange={setDescription}
+          customerName={customerName}
+          onCustomerNameChange={setCustomerName}
+          customerAddress={customerAddress}
+          onCustomerAddressChange={setCustomerAddress}
+          jobType={jobType}
+          onJobTypeChange={setJobType}
+          building={building}
+          progressMessage={progressMessage}
+          error={error}
+          onBuild={handleBuild}
+          onCancel={cancelBuild}
+        />
+      )}
+
+      {screen === "review" && quote && meta && (
+        <ReviewScreen
+          quote={quote}
+          onQuoteChange={setQuote}
+          meta={meta}
+          hstRegistered={settings.hstRegistered}
+          onBack={() => setScreen("capture")}
+          onPreview={() => setScreen("preview")}
+        />
+      )}
+
+      {screen === "preview" && quote && meta && (
+        <PreviewScreen
+          quote={quote}
+          meta={meta}
+          settings={settings}
+          onBack={() => setScreen("review")}
+        />
+      )}
+
+      {askPassword && (
+        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-5">
+            <h2 className="text-lg font-semibold">App password</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Enter the password once; it will be remembered on this phone.
+            </p>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submitPassword()}
+              autoFocus
+              className="mt-3 w-full rounded-lg border border-gray-300 p-3 text-base focus:border-gray-500 focus:outline-none"
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setAskPassword(false)}
+                className="flex-1 rounded-lg border border-gray-300 py-3 font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitPassword}
+                className="flex-1 rounded-lg bg-blue-700 py-3 font-semibold text-white"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
     </div>
   );
 }
