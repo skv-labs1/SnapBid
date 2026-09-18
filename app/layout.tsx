@@ -5,6 +5,11 @@ export const metadata: Metadata = {
   title: "SnapBid",
   description:
     "Photos and a voice note in, an itemized contractor quote out. Built for small Ontario contractors.",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {

@@ -5,15 +5,24 @@ import CaptureScreen from "@/components/CaptureScreen";
 import ReviewScreen from "@/components/ReviewScreen";
 import PreviewScreen from "@/components/PreviewScreen";
 import SettingsScreen from "@/components/SettingsScreen";
+import HistoryList from "@/components/HistoryList";
 import { dataUrlToBase64 } from "@/lib/image";
 import {
   clearPassword,
+  loadHistory,
   loadPassword,
   loadSettings,
   nextQuoteNumber,
   savePassword,
+  saveToHistory,
 } from "@/lib/storage";
-import { DEFAULT_SETTINGS, Quote, QuoteMeta, Settings } from "@/lib/types";
+import {
+  DEFAULT_SETTINGS,
+  Quote,
+  QuoteMeta,
+  SavedQuote,
+  Settings,
+} from "@/lib/types";
 
 type Screen = "capture" | "review" | "preview" | "settings";
 
@@ -36,10 +45,37 @@ export default function Home() {
   const [askPassword, setAskPassword] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const abortRef = useRef<AbortController | null>(null);
+  const [history, setHistory] = useState<SavedQuote[]>([]);
 
   useEffect(() => {
     setSettings(loadSettings());
+    setHistory(loadHistory());
   }, []);
+
+  // Keep the current quote (including edits) in history.
+  useEffect(() => {
+    if (!quote || !meta) return;
+    saveToHistory({ quote, meta, savedAt: new Date().toISOString() });
+    setHistory(loadHistory());
+  }, [quote, meta]);
+
+  function newQuote() {
+    setPhotos([]);
+    setDescription("");
+    setCustomerName("");
+    setCustomerAddress("");
+    setJobType("");
+    setQuote(null);
+    setMeta(null);
+    setError("");
+    setScreen("capture");
+  }
+
+  function openSaved(entry: SavedQuote) {
+    setQuote(entry.quote);
+    setMeta(entry.meta);
+    setScreen("review");
+  }
 
   function handleBuild() {
     setError("");
@@ -160,6 +196,16 @@ export default function Home() {
     <div className="min-h-screen">
       <header className="no-print sticky top-0 z-10 flex items-center justify-between bg-white px-4 py-3 shadow-sm">
         <h1 className="text-xl font-bold">SnapBid</h1>
+        <div className="flex items-center gap-1">
+          {quote && (
+            <button
+              type="button"
+              onClick={newQuote}
+              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold"
+            >
+              New quote
+            </button>
+          )}
         <button
           type="button"
           aria-label="Settings"
@@ -170,6 +216,7 @@ export default function Home() {
         >
           ⚙️
         </button>
+        </div>
       </header>
 
       {screen === "settings" && (
@@ -181,6 +228,7 @@ export default function Home() {
       )}
 
       {screen === "capture" && (
+        <>
         <CaptureScreen
           photos={photos}
           onPhotosChange={setPhotos}
@@ -198,6 +246,16 @@ export default function Home() {
           onBuild={handleBuild}
           onCancel={cancelBuild}
         />
+        {!building && (
+          <div className="mx-auto max-w-lg px-4 pb-24 pt-4">
+            <HistoryList
+              history={history}
+              hstRegistered={settings.hstRegistered}
+              onOpen={openSaved}
+            />
+          </div>
+        )}
+        </>
       )}
 
       {screen === "review" && quote && meta && (

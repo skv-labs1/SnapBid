@@ -146,7 +146,7 @@ export default function CaptureScreen(props: CaptureScreenProps) {
     (description.trim().length > 0 || photos.length > 0) && !building;
 
   return (
-    <div className="mx-auto max-w-lg space-y-6 p-4 pb-24">
+    <div className="mx-auto max-w-lg space-y-6 p-4">
       <section className="rounded-xl bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-lg font-semibold">Site photos</h2>
         <input
