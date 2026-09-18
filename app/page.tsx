@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import CaptureScreen from "@/components/CaptureScreen";
 import ReviewScreen from "@/components/ReviewScreen";
 import PreviewScreen from "@/components/PreviewScreen";
+import SettingsScreen from "@/components/SettingsScreen";
 import { dataUrlToBase64 } from "@/lib/image";
 import {
   clearPassword,
@@ -14,7 +15,7 @@ import {
 } from "@/lib/storage";
 import { DEFAULT_SETTINGS, Quote, QuoteMeta, Settings } from "@/lib/types";
 
-type Screen = "capture" | "review" | "preview";
+type Screen = "capture" | "review" | "preview" | "settings";
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("capture");
@@ -159,7 +160,25 @@ export default function Home() {
     <div className="min-h-screen">
       <header className="no-print sticky top-0 z-10 flex items-center justify-between bg-white px-4 py-3 shadow-sm">
         <h1 className="text-xl font-bold">SnapBid</h1>
+        <button
+          type="button"
+          aria-label="Settings"
+          onClick={() =>
+            setScreen(screen === "settings" ? "capture" : "settings")
+          }
+          className="rounded-full p-2 text-2xl leading-none"
+        >
+          ⚙️
+        </button>
       </header>
+
+      {screen === "settings" && (
+        <SettingsScreen
+          settings={settings}
+          onSettingsChange={setSettings}
+          onClose={() => setScreen("capture")}
+        />
+      )}
 
       {screen === "capture" && (
         <CaptureScreen
