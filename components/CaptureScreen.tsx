@@ -63,6 +63,7 @@ export default function CaptureScreen(props: CaptureScreenProps) {
   } = props;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
   const [photoError, setPhotoError] = useState("");
   const [speechSupported, setSpeechSupported] = useState(false);
   const [listening, setListening] = useState(false);
@@ -96,6 +97,7 @@ export default function CaptureScreen(props: CaptureScreenProps) {
     }
     if (resized.length > 0) onPhotosChange([...photos, ...resized]);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    if (libraryInputRef.current) libraryInputRef.current.value = "";
   }
 
   function startListening() {
@@ -158,14 +160,32 @@ export default function CaptureScreen(props: CaptureScreenProps) {
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={photos.length >= MAX_PHOTOS || building}
-          className="w-full rounded-lg bg-gray-900 py-4 text-lg font-semibold text-white active:bg-gray-700 disabled:bg-gray-300"
-        >
-          📷 Take photo
-        </button>
+        <input
+          ref={libraryInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={photos.length >= MAX_PHOTOS || building}
+            className="rounded-lg bg-gray-900 py-4 text-base font-semibold text-white active:bg-gray-700 disabled:bg-gray-300"
+          >
+            📷 Take photo
+          </button>
+          <button
+            type="button"
+            onClick={() => libraryInputRef.current?.click()}
+            disabled={photos.length >= MAX_PHOTOS || building}
+            className="rounded-lg border-2 border-gray-900 py-4 text-base font-semibold text-gray-900 active:bg-gray-100 disabled:border-gray-300 disabled:text-gray-300"
+          >
+            🖼️ Choose photos
+          </button>
+        </div>
         <p className="mt-2 text-sm text-gray-500">
           {photos.length}/{MAX_PHOTOS} photos
         </p>
